@@ -1,1 +1,1 @@
-copy Release_Build\_pos2kml.exe ..\..\..\bin\spp.exe
+copy Release_Build\_rnx2rtkp.exe ..\..\..\bin\rnx2rtkp.exe
