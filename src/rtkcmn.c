@@ -731,7 +731,7 @@ extern int decode_word(unsigned int word, unsigned char *data)
     return 1;
 }
 /* new matrix ------------------------------------------------------------------
-* allocate memory of matrix 
+* allocate memory of matrix
 * args   : int    n,m       I   number of rows and columns of matrix
 * return : matrix pointer (if n<=0 or m<=0, return NULL)
 *-----------------------------------------------------------------------------*/
@@ -875,6 +875,24 @@ extern void matmul(const char *tr, int n, int k, int m, double alpha,
     dgemm_((char *)tr,(char *)tr+1,&n,&k,&m,&alpha,(double *)A,&lda,(double *)B,
            &ldb,&beta,C,&n);
 }
+extern int  matscalmul(double *A, int n,int m,double scala){
+	int i,j;
+	for(i=0;i<m;i++){
+		for(j=0;j<n;j++){
+			A[i*n+j]= scala* A[i*n+j];
+		}
+	}
+	return 1;
+}
+extern int  matadd(double *A, double *B,int n,int m,double scala){
+	int i,j;
+	for(i=0;i<m;i++){
+		for(j=0;j<n;j++){
+			A[i*n+j]= A[i*n+j]+scala*B[i*n+j];
+		}
+	}
+	return 1;
+}
 /* inverse of matrix -----------------------------------------------------------
 * inverse of matrix (A=A^-1)
 * args   : double *A        IO  matrix (n x n)
@@ -883,15 +901,16 @@ extern void matmul(const char *tr, int n, int k, int m, double alpha,
 *-----------------------------------------------------------------------------*/
 extern int matinv(double *A, int n)
 {
-    double *work;
-    int info,lwork=n*16,*ipiv=imat(n,1);
-    
-    work=mat(lwork,1);
-    dgetrf_(&n,&n,A,&n,ipiv,&info);
-    if (!info) dgetri_(&n,A,&n,ipiv,work,&lwork,&info);
-    free(ipiv); free(work);
-    return info;
+	double *work;
+	int info,lwork=n*16,*ipiv=imat(n,1);
+
+	work=mat(lwork,1);
+	dgetrf_(&n,&n,A,&n,ipiv,&info);
+	if (!info) dgetri_(&n,A,&n,ipiv,work,&lwork,&info);
+	free(ipiv); free(work);
+	return info;
 }
+
 /* solve linear equation -------------------------------------------------------
 * solve linear equation (X=A\Y or X=A'\Y)
 * args   : char   *tr       I   transpose flag ("N":normal,"T":transpose)
@@ -927,16 +946,49 @@ extern void matmul(const char *tr, int n, int k, int m, double alpha,
     int i,j,x,f=tr[0]=='N'?(tr[1]=='N'?1:2):(tr[1]=='N'?3:4);
     
     for (i=0;i<n;i++) for (j=0;j<k;j++) {
-        d=0.0;
+		d=0.0;
         switch (f) {
             case 1: for (x=0;x<m;x++) d+=A[i+x*n]*B[x+j*m]; break;
             case 2: for (x=0;x<m;x++) d+=A[i+x*n]*B[j+x*k]; break;
             case 3: for (x=0;x<m;x++) d+=A[x+i*m]*B[x+j*m]; break;
             case 4: for (x=0;x<m;x++) d+=A[x+i*m]*B[j+x*k]; break;
         }
-        if (beta==0.0) C[i+j*n]=alpha*d; else C[i+j*n]=alpha*d+beta*C[i+j*n];
-    }
+		if (beta==0.0) C[i+j*n]=alpha*d; else C[i+j*n]=alpha*d+beta*C[i+j*n];
+	}
 }
+
+/* matrix exponential -----------------------------------------------------------
+* exponential of matrix (exp(A))
+* args   : double *A        IO  matrix (n x n)
+*          int    n         I   size of matrix A
+* return : status (0:ok,0>:error)
+*-----------------------------------------------------------------------------*/
+extern int matexp(double *A, int n)
+{
+	int i;
+	double *curMat=eye(n);
+	double *sumMat=eye(n);
+	double *eyeu= eye(n);
+	double *temp= eye(n);
+	tracemat(0,sumMat,n,n,3,5);
+
+
+	for(i=1;i<100;i++){
+	   trace(0,"curMat(b):\n");
+	   tracemat(0,curMat,n,n,3,5);
+	   matmul("NN",  n,  n,  n, 1.0/i, curMat, A,  0.0, temp);
+	   trace(0,"temp(p):\n");
+	   tracemat(0,temp,n,n,3,5);
+	   matmul("NN",  n,  n,  n, 1.0, eyeu, temp,  1, sumMat);
+	   tracemat(0,sumMat,3,3,3,5);
+	   matcpy(curMat,temp,n,n);
+	}
+	matcpy(A,sumMat,n,n);
+
+	free(curMat); free(sumMat);free(eyeu);   free(temp);
+	return 1;
+}
+
 /* LU decomposition ----------------------------------------------------------*/
 static int ludcmp(double *A, int n, int *indx, double *d)
 {

@@ -1285,8 +1285,11 @@ extern void cross3(const double *a, const double *b, double *c);
 extern int  normv3(const double *a, double *b);
 extern void matcpy(double *A, const double *B, int n, int m);
 extern void matmul(const char *tr, int n, int k, int m, double alpha,
-                   const double *A, const double *B, double beta, double *C);
+				   const double *A, const double *B, double beta, double *C);
+extern int  matscalmul(double *A, int n,int m,double scala);
+extern int  matadd(double *A, double *B,int n,int m,double scala);
 extern int  matinv(double *A, int n);
+extern int  matexp(double *A, int n);
 extern int  solve (const char *tr, const double *A, const double *Y, int n,
                    int m, double *X);
 extern int  lsq   (const double *A, const double *y, int n, int m, double *x,

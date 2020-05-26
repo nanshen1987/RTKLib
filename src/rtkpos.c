@@ -103,6 +103,8 @@ static int statlevel=0;          /* rtk status output level (0:off) */
 static FILE *fp_stat=NULL;       /* rtk status file pointer */
 static char file_stat[1024]="";  /* rtk status file original path */
 static gtime_t time_stat={0};    /* rtk status file time */
+/* imm variable -------------------------------------------------------------*/
+double imm_u[2]={1,0};
 
 /* open solution status file ---------------------------------------------------
 * open solution status file and set output level
@@ -419,7 +421,7 @@ static int selsat(const obsd_t *obs, double *azel, int nu, int nr,
         if      (obs[i].sat<obs[j].sat) j--;
         else if (obs[i].sat>obs[j].sat) i--;
         else if (azel[1+j*2]>=opt->elmin) { /* elevation at base station */
-            sat[k]=obs[i].sat; iu[k]=i; ir[k++]=j;
+			sat[k]=obs[i].sat; iu[k]=i; ir[k++]=j;
             trace(4,"(%2d) sat=%3d iu=%2d ir=%2d\n",k-1,obs[i].sat,i,j);
         }
     }
@@ -428,8 +430,34 @@ static int selsat(const obsd_t *obs, double *azel, int nu, int nr,
 /* temporal update of position/velocity/acceleration -------------------------*/
 static void udpos(rtk_t *rtk, double tt)
 {
-    double *F,*FP,*xp,pos[3],Q[9]={0},Qv[9],var=0.0;
-    int i,j;
+	double *F_0,*FP_0,*xp_0,pos[3],Q[9]={0},Qv[9],var=0.0;
+	int i,j,k;
+	double *F_1,*FP_1,*xp_1;
+	//imm相关参数
+	double model_i_i = 0.99;
+	double model_i_j = 0.01;
+	double u_pred[2]={0,0};
+	int sNum = 9;
+	double *interX_0=zeros(sNum,1);
+	double *interX_1=zeros(sNum,1);
+	double *interQ_0=zeros(sNum,sNum);
+	double *interQ_1=zeros(sNum,sNum);
+	double *x_0=zeros(sNum,1);
+	double *x_1=zeros(sNum,1);
+	double *Q_0=zeros(sNum,sNum);
+	double *Q_1=zeros(sNum,sNum);
+	double *x_mr=zeros(sNum,1);
+	double *Q_mr=zeros(sNum,sNum);
+	double *pred_Q_0= zeros(sNum,sNum);
+	double *pred_Q_1= zeros(sNum,sNum);
+
+	//DMP model
+	double f=16.0897;
+	double zeta=0.2500;
+	double w0=2*PI*f;
+	double beta=zeta*w0;
+	double *Fdp0=zeros(3,3);
+	double *Fdp=zeros(3,3);
     
     trace(3,"udpos   : tt=%.3f\n",tt);
     
@@ -466,25 +494,138 @@ static void udpos(rtk_t *rtk, double tt)
         return;
     }
     /* state transition of position/velocity/acceleration */
-    F=eye(rtk->nx); FP=mat(rtk->nx,rtk->nx); xp=mat(rtk->nx,1);
-    
-    for (i=0;i<6;i++) {
-        F[i+(i+3)*rtk->nx]=tt;
-    }
-    /* x=F*x, P=F*P*F+Q */
-    matmul("NN",rtk->nx,1,rtk->nx,1.0,F,rtk->x,0.0,xp);
-    matcpy(rtk->x,xp,rtk->nx,1);
-    matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F,rtk->P,0.0,FP);
-    matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP,F,0.0,rtk->P);
-    
-    /* process noise added to only acceleration */
+	F_0=eye(rtk->nx); FP_0=mat(rtk->nx,rtk->nx); xp_0=mat(rtk->nx,1);
+	F_1=eye(rtk->nx); FP_1=mat(rtk->nx,rtk->nx); xp_1=mat(rtk->nx,1);
+
+	for (i=0;i<6;i++) {
+		F_0[i+(i+3)*rtk->nx]=tt;
+	}
+
+	Fdp0[3*1+0]=1;
+	Fdp0[3*0+1]=-w0*w0;
+	Fdp0[3*1+1]=-2*beta;
+	Fdp0[3*1+2]=-w0*w0;
+	Fdp0[3*2+2]=-2*beta;
+
+	Fdp[0]=0.2297;
+	Fdp[1]=-21.5701;
+	Fdp[2]=553.2954;
+	Fdp[3]=0.0228;
+	Fdp[4]= -0.1206;
+	Fdp[5]=-12.584;
+	Fdp[6]=0;
+	Fdp[7]=0;
+	Fdp[8]=0.4632;
+
+	trace(0,"Fdp:\n");
+	tracemat(0,Fdp,3,3,3,5);
+
+	for (i=0;i<3;i++) {
+		for(j=0;j<3;j++){
+		  F_1[3*i+0+(3*j+3*i+0)*rtk->nx]=F_1[3*i+1+(3*j+3*i+1)*rtk->nx]=F_1[3*i+2+(3*j+3*i+2)*rtk->nx]=Fdp[i+j*3];
+		}
+	}
+
+	trace(0,"F_1:\n");
+	tracemat(0,F_1,rtk->nx,rtk->nx,10,5);
+
+	//mixed
+	for(j=0;j<2;j++){
+		for (k = 0; k < 2; k++) {
+			if (j == k) {
+				u_pred[j] = u_pred[j] + model_i_i*u[k];
+			}
+			else {
+				u_pred[j] = u_pred[j] + model_i_j*u[k];
+			}
+		}
+		for ( k = 0; k < 2; k++)
+		{
+			double model_t = model_i_j;
+			if (j == k) {
+				model_t = model_i_i;
+			}
+			double u_k_j = model_t*u[k] / u_pred[j];
+			if(j==0){
+			   if(k==0){
+					matadd(interX_0,x_0,sNum,1,u_k_j);
+			   }else{
+					matadd(interX_0,x_1,sNum,1,u_k_j);
+			   }
+			}else{
+			   if(k==0){
+					matadd(interX_1,x_0,sNum,1,u_k_j);
+			   }else{
+					matadd(interX_1,x_1,sNum,1,u_k_j);
+			   }
+			}
+		}
+		for (k = 0; k < 2; k++)
+		{
+			double model_t = model_i_j;
+			if (j == k) {
+				model_t = model_i_i;
+			}
+			double u_k_j = model_t*u[k] / u_pred[j];
+			matcpy(x_mr,x_0,sNum,1);
+			if (j == 0) {
+				if (k == 0) {
+					matcpy(x_mr,x_0,sNum,1);
+					matadd(x_mr,interX_0,,sNum,1,-1);
+					matmul("NT", sNum,sNum,1,x_mr,x_mr,0,Q_mr);
+					matadd(Q_mr,Q_0, sNum,sNum,1);
+					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+				}
+				else {
+					matcpy(x_mr,x_1,sNum,1);
+					matadd(x_mr,interX_0,,sNum,1,-1);
+					matmul("NT", sNum,sNum,1,x_mr,x_mr,0,Q_mr);
+					matadd(Q_mr,Q_1, sNum,sNum,1);
+					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+				}
+			}
+			else {
+				if (k == 0) {
+					matcpy(x_mr,x_0,sNum,1);
+					matadd(x_mr,interX_1,,sNum,1,-1);
+					matmul("NT", sNum,sNum,1,x_mr,x_mr,0,Q_mr);
+					matadd(Q_mr,Q_0, sNum,sNum,1);
+					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+				}
+				else {
+					matcpy(x_mr,x_1,sNum,1);
+					matadd(x_mr,interX_1,,sNum,1,-1);
+					matmul("NT", sNum,sNum,1,x_mr,x_mr,0,Q_mr);
+					matadd(Q_mr,Q_1, sNum,sNum,1);
+					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+				}
+			}
+		}
+	}
+	//each kalman filter-predict
+	/* x=F*x, P=F*P*F+Q */
+	matmul("NN",rtk->nx,1,rtk->nx,1.0,F_0,interX_0,0.0,xp_0);
+	//matcpy(rtk->x,xp,rtk->nx,1);
+	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_0,interQ_0,0.0,FP_0);
+	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_0,F_0,0.0,pred_Q_0);
+	matmul("NN",rtk->nx,1,rtk->nx,1.0,F_1,interX_1,0.0,xp_1);
+	//matcpy(rtk->x,xp,rtk->nx,1);
+	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_1,interQ_1,0.0,FP_1);
+	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_1,F_1,0.0,pred_Q_1);
+
+
+
+
+	/* process noise added to only acceleration */
     Q[0]=Q[4]=SQR(rtk->opt.prn[3]); Q[8]=SQR(rtk->opt.prn[4]);
     ecef2pos(rtk->x,pos);
-    covecef(pos,Q,Qv);
+	covecef(pos,Q,Qv);
     for (i=0;i<3;i++) for (j=0;j<3;j++) {
-        rtk->P[i+6+(j+6)*rtk->nx]+=Qv[i+j*3];
-    }
-    free(F); free(FP); free(xp);
+		//rtk->P[i+6+(j+6)*rtk->nx]+=Qv[i+j*3];
+		pred_Q_0[i+6+(j+6)*rtk->nx]+=Qv[i+j*3];
+		pred_Q_1[i+6+(j+6)*rtk->nx]+=Qv[i+j*3];
+	}
+    free(F); free(FP); free(xp); free(Fdp0); free(Fdp);
 }
 /* temporal update of ionospheric parameters ---------------------------------*/
 static void udion(rtk_t *rtk, double tt, double bl, const int *sat, int ns)
@@ -1850,9 +1991,11 @@ extern int rtkpos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
             return 1;
         }
     }
-    /* relative potitioning */
-    relpos(rtk,obs,nu,nr,nav);
-    outsolstat(rtk);
-    
+	/* relative potitioning */
+	traceopen("D:\\Softs-Data\\vs-workspace2\\RTKLib\\rtklib.log");
+	tracelevel(0);
+	relpos(rtk,obs,nu,nr,nav);
+	outsolstat(rtk);
+
     return 1;
 }
