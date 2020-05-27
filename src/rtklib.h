@@ -1286,8 +1286,12 @@ extern int  normv3(const double *a, double *b);
 extern void matcpy(double *A, const double *B, int n, int m);
 extern void matmul(const char *tr, int n, int k, int m, double alpha,
 				   const double *A, const double *B, double beta, double *C);
+extern void mataba_t(const double *A,const double *B,int n,int m,double *C);
 extern int  matscalmul(double *A, int n,int m,double scala);
-extern int  matadd(double *A, double *B,int n,int m,double scala);
+extern double matdet(double *a,int n);
+extern double matvpv(double *v,double *p,int n);
+extern int  matadd(double *A, const double *B,int n,int m,double scala);
+extern void mataddscal(const double *A,const double *B,double *C,int n,int m,double scalaA,double scalaB);
 extern int  matinv(double *A, int n);
 extern int  matexp(double *A, int n);
 extern int  solve (const char *tr, const double *A, const double *Y, int n,

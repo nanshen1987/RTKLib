@@ -1,4 +1,4 @@
-/*------------------------------------------------------------------------------
+﻿/*------------------------------------------------------------------------------
 * rtkcmn.c : rtklib common functions
 *
 *          Copyright (C) 2007-2018 by T.TAKASU, All rights reserved.
@@ -875,24 +875,8 @@ extern void matmul(const char *tr, int n, int k, int m, double alpha,
     dgemm_((char *)tr,(char *)tr+1,&n,&k,&m,&alpha,(double *)A,&lda,(double *)B,
            &ldb,&beta,C,&n);
 }
-extern int  matscalmul(double *A, int n,int m,double scala){
-	int i,j;
-	for(i=0;i<m;i++){
-		for(j=0;j<n;j++){
-			A[i*n+j]= scala* A[i*n+j];
-		}
-	}
-	return 1;
-}
-extern int  matadd(double *A, double *B,int n,int m,double scala){
-	int i,j;
-	for(i=0;i<m;i++){
-		for(j=0;j<n;j++){
-			A[i*n+j]= A[i*n+j]+scala*B[i*n+j];
-		}
-	}
-	return 1;
-}
+
+
 /* inverse of matrix -----------------------------------------------------------
 * inverse of matrix (A=A^-1)
 * args   : double *A        IO  matrix (n x n)
@@ -987,6 +971,81 @@ extern int matexp(double *A, int n)
 
 	free(curMat); free(sumMat);free(eyeu);   free(temp);
 	return 1;
+}
+extern void mataba_t(const double *A,const double *B,int n,int m,double *C)
+{
+    double *AB=mat(m,n);
+    matmul("NN",n,m,m,1,A,B,0,AB);
+    matmul("NT",n,n,m,1,AB,A,0,C);
+    free(AB);
+}
+
+extern int  matscalmul(double *A, int n,int m,double scala){
+	int i,j;
+	for(i=0;i<m;i++){
+		for(j=0;j<n;j++){
+			A[i*n+j]= scala* A[i*n+j];
+		}
+	}
+	return 1;
+}
+extern int  matadd(double *A, const double *B,int n,int m,double scala){
+	int i,j;
+	for(i=0;i<m;i++){
+		for(j=0;j<n;j++){
+			A[i*n+j]= A[i*n+j]+scala*B[i*n+j];
+		}
+	}
+	return 1;
+}
+extern void mataddscal(const double *A,const double *B,double *C,int n,int m,double scalaA,double scalaB)
+{
+   	int i,j;
+	for(i=0;i<m;i++){
+		for(j=0;j<n;j++){
+			C[i*n+j]= scalaA*A[i*n+j]+scalaB*B[i*n+j];
+		}
+	} 
+}
+
+extern double matdet(double *a,int n)
+{
+	int out;
+	int i,j;
+	double k,result=1;
+    
+    for(out=0;out<n;out++){                                     //外层阶数循环 
+    	
+    	for(i=out;i<n;i++){                                     //寻找第一项不为零的行
+    		if(a[i+out*n]==0) continue;
+    	    else for(j=out;j<n;j++){                            //第一项不为零的行与顶行交换 
+    	    	k=a[i+j*n];a[i+j*n]=a[out+j*n];a[out+j*n]=k;
+    	    }
+    	    if(i==out) result*=a[out+out*n];  
+    	    else       result*=-a[out+out*n];                    //结果变号 
+    	    break;
+		}
+    	if(i==n) return 0;
+    	
+    	if(a[out+out*n]!=1)
+    		for(j=out+1;j<n;j++)                                 //将第一项变为1 
+    			a[out+j*n]/=a[out+out*n];
+        a[out+out*n]=1;
+    	
+    	for(i=out+1;i<n;i++)                                     //将该列其余项消为0 
+    		for(j=out+1;j<n;j++)
+    			a[i+j*n]-=a[i+out*n]*a[out+j*n];
+    }
+    return result;
+}
+extern double matvpv(double *v,double *p,int n)
+{
+	double result;
+    double *vp=mat(1,n);
+    matmul("NN",1,n,n,1,v,p,0,vp);
+    result=dot(vp,v,n);
+    free(vp);
+    return result;
 }
 
 /* LU decomposition ----------------------------------------------------------*/
