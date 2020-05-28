@@ -974,10 +974,17 @@ extern int matexp(double *A, int n)
 }
 extern void mataba_t(const double *A,const double *B,int n,int m,double *C)
 {
-    double *AB=mat(m,n);
+    double *AB=mat(n,m);
     matmul("NN",n,m,m,1,A,B,0,AB);
     matmul("NT",n,n,m,1,AB,A,0,C);
     free(AB);
+}
+extern void mata_tba(const double *A,const double *B,int n,int m,double *C)
+{
+    double *ATB=mat(m,n);
+    matmul("TN",m,n,n,1,A,B,0,ATB);
+    matmul("NT",m,m,n,1,ATB,A,0,C);
+    free(ATB);
 }
 
 extern int  matscalmul(double *A, int n,int m,double scala){

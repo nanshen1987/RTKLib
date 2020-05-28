@@ -107,8 +107,8 @@ static gtime_t time_stat={0};    /* rtk status file time */
 double u_pred[2];//mix
 double model_i_i = 0.99;//mix
 double model_i_j = 0.01;//mix
-double m_lng,m_lat;
-double *m_x={};
+double m_llh[2]={30.528885582*D2R, 114.356779168*D2R};//lat,lng,height
+double m_xyz[3]={-2267776.7888,  5009327.1136,  3221034.0581};//xyz
 double *pred_x_0,*pred_x_1,*pred_Q_0,*pred_Q_1;//predict
 double u[2]={1,0};//combi
 double *prev_x_0,*prev_x_1;//combi
@@ -442,6 +442,7 @@ static void udpos(rtk_t *rtk, double tt)
 	double *F_0,*FP_0,pos[3],Q[9]={0},Qv[9],var=0.0;
 	int i,j,k;
 	double *F_1,*FP_1;
+    
 	//imm
 	int sNum = rtk->nx;
 	// double *Q_0=zeros(sNum,sNum);
@@ -453,6 +454,11 @@ static void udpos(rtk_t *rtk, double tt)
 	double *interX_1=zeros(sNum,1);
 	double *interQ_0=zeros(sNum,sNum);
 	double *interQ_1=zeros(sNum,sNum);
+    double *g2l3dmat=zeros(3,3);
+    double *g2lmat=eye(sNum);
+    double *RT_F_1_R=zeros(sNum,sNum);
+    double *temp_x=mat(sNum,1);
+
 
 
 	//DMP model
@@ -464,6 +470,7 @@ static void udpos(rtk_t *rtk, double tt)
 	double *Fdp=zeros(3,3);
     pred_Q_0= zeros(sNum,sNum);
 	pred_Q_1= zeros(sNum,sNum);
+    xyz2enu(m_llh,g2l3dmat);
 
     
     trace(3,"udpos   : tt=%.3f\n",tt);
@@ -479,7 +486,15 @@ static void udpos(rtk_t *rtk, double tt)
         if (rtk->opt.dynamics) {
             for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
             for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
-        }
+		}
+		prev_x_0=mat(rtk->nx,1);
+		prev_x_1=mat(rtk->nx,1);
+		prev_Q_0=mat(rtk->nx,rtk->nx);
+		prev_Q_1=mat(rtk->nx,rtk->nx);
+		matcpy(prev_x_0,rtk->x,rtk->nx,1);
+		matcpy(prev_x_0,rtk->x,rtk->nx,1);
+		matcpy(prev_Q_0,rtk->P,rtk->nx,rtk->nx);
+		matcpy(prev_Q_1,rtk->P,rtk->nx,rtk->nx);
     }
     /* static mode */
     if (rtk->opt.mode==PMODE_STATIC) return;
@@ -530,11 +545,12 @@ static void udpos(rtk_t *rtk, double tt)
 	for (i=0;i<3;i++) {
 		for(j=0;j<3;j++){
 		  F_1[3*i+0+(3*j+3*i+0)*rtk->nx]=F_1[3*i+1+(3*j+3*i+1)*rtk->nx]=F_1[3*i+2+(3*j+3*i+2)*rtk->nx]=Fdp[i+j*3];
-		}
+          g2lmat[i+j*rtk->nx]= g2lmat[i+3+(j+3)*rtk->nx]= g2lmat[i+6+(j+6)*rtk->nx]=g2l3dmat[i+j*3];
+        }
 	}
 
-	trace(0,"F_1:\n");
-	tracemat(0,F_1,rtk->nx,rtk->nx,10,5);
+	trace(0,"g2lmat:\n");
+	tracemat(0,g2lmat,rtk->nx,rtk->nx,10,5);
 
 	//mixed
 	for(j=0;j<2;j++){
@@ -611,14 +627,25 @@ static void udpos(rtk_t *rtk, double tt)
 	}
 	//each kalman filter-predict
 	/* x=F*x, P=F*P*F+Q */
+    //mode 0
 	matmul("NN",rtk->nx,1,rtk->nx,1.0,F_0,interX_0,0.0,pred_x_0);
 	//matcpy(rtk->x,xp,rtk->nx,1);
 	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_0,interQ_0,0.0,FP_0);
 	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_0,F_0,0.0,pred_Q_0);
-	matmul("NN",rtk->nx,1,rtk->nx,1.0,F_1,interX_1,0.0,pred_x_1);
+    //mode 1
+    matcpy(pred_x_1,interX_1,rtk->nx,1);
+    pred_x_1[0]=pred_x_1[0]-m_xyz[0];    
+    pred_x_1[1]=pred_x_1[1]-m_xyz[1];    
+    pred_x_1[2]=pred_x_1[2]-m_xyz[2];
+    mata_tba(g2lmat,F_1,rtk->nx,rtk->nx,RT_F_1_R);
+	matmul("NN",rtk->nx,1,rtk->nx,1.0,RT_F_1_R,pred_x_1,0.0,temp_x);
+    temp_x[0]=temp_x[0]+m_xyz[0];
+    temp_x[1]=temp_x[1]+m_xyz[1];
+    temp_x[2]=temp_x[2]+m_xyz[2];
+    matcpy(pred_x_1,temp_x,rtk->nx,1);
 	//matcpy(rtk->x,xp,rtk->nx,1);
-	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_1,interQ_1,0.0,FP_1);
-	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_1,F_1,0.0,pred_Q_1);
+	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,RT_F_1_R,interQ_1,0.0,FP_1);
+	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_1,RT_F_1_R,0.0,pred_Q_1);
 
 
 
@@ -637,6 +664,8 @@ static void udpos(rtk_t *rtk, double tt)
     free(interQ_0);
 	free(interQ_1);
 	free(x_mr);free(Q_mr);
+    free(g2l3dmat);free(g2lmat);
+    free(temp_x);
 }
 /* temporal update of ionospheric parameters ---------------------------------*/
 static void udion(rtk_t *rtk, double tt, double bl, const int *sat, int ns)
