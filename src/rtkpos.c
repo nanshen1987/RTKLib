@@ -104,13 +104,15 @@ static FILE *fp_stat=NULL;       /* rtk status file pointer */
 static char file_stat[1024]="";  /* rtk status file original path */
 static gtime_t time_stat={0};    /* rtk status file time */
 /* imm variable -------------------------------------------------------------*/
-double u[2]={1,0};
-double u_pred[2];
-double *pred_x_0,*pred_x_1,*Pp_0,*Pp_1,*pred_Q_0,*pred_Q_1;
-double model_i_i = 0.99;
-double model_i_j = 0.01;
-double *prev_x_0,*prev_x_1;
-double *prev_Q_0,*prev_Q_1;
+double u_pred[2];//mix
+double model_i_i = 0.99;//mix
+double model_i_j = 0.01;//mix
+double m_lng,m_lat;
+double *m_x={};
+double *pred_x_0,*pred_x_1,*pred_Q_0,*pred_Q_1;//predict
+double u[2]={1,0};//combi
+double *prev_x_0,*prev_x_1;//combi
+double *prev_Q_0,*prev_Q_1;//combi
 
 
 /* open solution status file ---------------------------------------------------
@@ -1714,14 +1716,14 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 			break;
 		}
 		/* double-differenced residuals and partial derivatives */
-		if ((nv=ddres(rtk,nav,dt,pred_x_0,Pp_0,sat,y_0,e_0,azel_0,iu,ir,ns,v_0,H_0,R_0,vflg))<1) {
+		if ((nv=ddres(rtk,nav,dt,pred_x_0,pred_Q_0,sat,y_0,e_0,azel_0,iu,ir,ns,v_0,H_0,R_0,vflg))<1) {
 			errmsg(rtk,"no double-differenced residual\n");
 			stat=SOLQ_NONE;
 			break;
 		}
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
-		if ((info=filter(pred_x_0,Pp_0,H_0,v_0,R_0,rtk->nx,nv))) {
+		if ((info=filter(pred_x_0,pred_Q_0,H_0,v_0,R_0,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
 			break;
@@ -1738,14 +1740,14 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 			break;
 		}
 		/* double-differenced residuals and partial derivatives */
-		if ((nv=ddres(rtk,nav,dt,pred_x_1,Pp_0,sat,y_1,e_1,azel_1,iu,ir,ns,v_1,H_1,R_1,vflg))<1) {
+		if ((nv=ddres(rtk,nav,dt,pred_x_1,pred_Q_0,sat,y_1,e_1,azel_1,iu,ir,ns,v_1,H_1,R_1,vflg))<1) {
 			errmsg(rtk,"no double-differenced residual\n");
 			stat=SOLQ_NONE;
 			break;
 		}
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
-		if ((info=filter(pred_x_1,Pp_1,H_1,v_1,R_1,rtk->nx,nv))) {
+		if ((info=filter(pred_x_1,pred_Q_1,H_1,v_1,R_1,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
 			break;
@@ -1789,9 +1791,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		mataddscal(pred_x_0,pred_x_1,xp,rtk->nx,1,u[0],u[1]);
 		mataddscal(pred_x_0,xp,xp_r_0,rtk->nx,1,1,-1);
         mataddscal(pred_x_1,xp,xp_r_1,rtk->nx,1,1,-1);
-        matmul("NT",rtk->nx,rtk->nx,1,1,pred_x_0,pred_x_0,1,Pp_0);
-		matmul("NT",rtk->nx,rtk->nx,1,1,pred_x_1,pred_x_1,1,Pp_1);
-		mataddscal(Pp_0,Pp_1,Pp,rtk->nx,rtk->nx,u[0],u[1]);
+        matmul("NT",rtk->nx,rtk->nx,1,1,pred_x_0,pred_x_0,1,pred_Q_0);
+		matmul("NT",rtk->nx,rtk->nx,1,1,pred_x_1,pred_x_1,1,pred_Q_1);
+		mataddscal(pred_Q_0,pred_Q_1,Pp,rtk->nx,rtk->nx,u[0],u[1]);
     }
     if (stat!=SOLQ_NONE&&zdres(0,obs,nu,rs,dts,svh,nav,xp,opt,0,y,e,azel)) {
         
