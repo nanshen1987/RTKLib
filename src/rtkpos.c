@@ -539,8 +539,8 @@ static void udpos(rtk_t *rtk, double tt)
 	Fdp[7]=0;
 	Fdp[8]=0.4632;
 
-	trace(0,"Fdp:\n");
-	tracemat(0,Fdp,3,3,3,5);
+//	trace(0,"Fdp:\n");
+//	tracemat(0,Fdp,3,3,3,5);
 
 	for (i=0;i<3;i++) {
 		for(j=0;j<3;j++){
@@ -549,8 +549,8 @@ static void udpos(rtk_t *rtk, double tt)
         }
 	}
 
-	trace(0,"g2lmat:\n");
-	tracemat(0,g2lmat,rtk->nx,rtk->nx,10,5);
+//	trace(0,"g2lmat:\n");
+//	tracemat(0,g2lmat,rtk->nx,rtk->nx,10,5);
 
 	//mixed
 	for(j=0;j<2;j++){
@@ -632,6 +632,8 @@ static void udpos(rtk_t *rtk, double tt)
 	//matcpy(rtk->x,xp,rtk->nx,1);
 	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_0,interQ_0,0.0,FP_0);
 	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_0,F_0,0.0,pred_Q_0);
+	trace(0,"interQ_0="); tracemat(0,interQ_0,rtk->nx,rtk->nx,10,5);
+    trace(0,"pred_Q_0_g="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
     //mode 1
     matcpy(pred_x_1,interX_1,rtk->nx,1);
     pred_x_1[0]=pred_x_1[0]-m_xyz[0];    
@@ -1079,8 +1081,8 @@ static int zdres(int base, const obsd_t *obs, int n, const double *rs,
               obs[i].sat,rs[i*6],rs[1+i*6],rs[2+i*6],dts[i*2],azel[i*2]*R2D,
               azel[1+i*2]*R2D);
     }
-    trace(4,"y=\n"); tracemat(4,y,nf*2,n,13,3);
-    
+//    trace(0,"y=\n"); tracemat(0,y,nf*2,n,13,3);
+
     return 1;
 }
 /* test valid observation data -----------------------------------------------*/
@@ -1672,7 +1674,7 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
 static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
                   const nav_t *nav)
 {
-    prcopt_t *opt=&rtk->opt;
+	prcopt_t *opt=&rtk->opt;
     gtime_t time=obs[0].time;
     double *rs,*dts,*var,*y_0,*e_0,*azel_0,*y_1,*e_1,*azel_1,*v_0,*H_0,*s_0,*R_0,*v_1,*H_1,*R_1,*s_1,*xp,*Pp,*xa,*bias,dt;
     double *y,*e,*azel;
@@ -1681,7 +1683,8 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     int i,j,f,n=nu+nr,ns,ny,nv,sat[MAXSAT],iu[MAXSAT],ir[MAXSAT],niter;
     int info,vflg[MAXOBS*NFREQ*2+1],svh[MAXOBS*2];
     int stat=rtk->opt.mode<=PMODE_DGPS?SOLQ_DGPS:SOLQ_FLOAT;
-    int nf=opt->ionoopt==IONOOPT_IFLC?1:opt->nf;
+	int nf=opt->ionoopt==IONOOPT_IFLC?1:opt->nf;
+	rtk->nx=9;
     
     trace(3,"relpos  : nx=%d nu=%d nr=%d\n",rtk->nx,nu,nr);
     
@@ -1739,6 +1742,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 	for (i=0;i<niter;i++) {
 		/***************mode 0****************************/
 		/* undifferenced residuals for rover */
+		matcpy(y_0,y,nf*2,n);
 		if (!zdres(0,obs,nu,rs,dts,svh,nav,pred_x_0,opt,0,y_0,e_0,azel_0)) {
 			errmsg(rtk,"rover initial position error\n");
 			stat=SOLQ_NONE;
@@ -1752,17 +1756,26 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		}
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
-		if ((info=filter(pred_x_0,pred_Q_0,H_0,v_0,R_0,rtk->nx,nv))) {
+        matcpy(prev_x_0,pred_x_0,rtk->nx,1); matcpy(prev_Q_0,pred_Q_0,rtk->nx,1);
+		if ((info=filter(prev_x_0,prev_Q_0,H_0,v_0,R_0,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
 			break;
 		}
-        //innovation vector variation
+		//innovation vector variation
+		trace(0,"H_0="); tracemat(0,H_0,ny,rtk->nx,10,5);
+		trace(0,"pred_Q_0="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
 		mataba_t(H_0,pred_Q_0,ny,rtk->nx,s_0);
-        matadd(s_0,R_0,ny,ny,1);
+		trace(0,"s_0="); tracemat(0,s_0,ny,ny,10,5);
+		trace(0,"R_0="); tracemat(0,R_0,ny,ny,10,5);
+		matadd(s_0,R_0,ny,ny,1);
+		trace(0,"s_0(a)="); tracemat(0,s_0,ny,ny,10,5);
+
+
 
 		/***************mode 1****************************/
 		/* undifferenced residuals for rover */
+		matcpy(y_1,y,nf*2,n);
 		if (!zdres(0,obs,nu,rs,dts,svh,nav,pred_x_1,opt,0,y_1,e_1,azel_1)) {
 			errmsg(rtk,"rover initial position error\n");
 			stat=SOLQ_NONE;
@@ -1776,6 +1789,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		}
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
+        matcpy(prev_x_1,pred_x_1,rtk->nx,1); matcpy(prev_Q_1,pred_Q_1,rtk->nx,1);
 		if ((info=filter(pred_x_1,pred_Q_1,H_1,v_1,R_1,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
@@ -1789,13 +1803,16 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         trace(4,"x(%d)=",i+1); tracemat(4,xp,1,NR(opt),13,4);
         /**********model probability estimation**************/
         dets_0= matdet(s_0,ny);
+        trace(0,"s0="); tracemat(0,s_0,ny,ny,10,5);
         dets_1= matdet(s_1,ny);
         matinv(s_0,ny);
+        trace(0,"s0(inv)="); tracemat(0,s_0,ny,ny,10,5);
 		matinv(s_1,ny);
 		vpv_0=matvpv(v_0,s_0,ny);
+         trace(0,"v0="); tracemat(0,v_0,ny,1,10,5);
 		vpv_1=matvpv(v_1,s_1,ny);
 		lk_0 = exp(-0.5*vpv_0)*sqrt(2*PI*abs(dets_0));
-		lk_1 = exp(-0.5*vpv_1)*sqrt(2 * PI*abs(dets_1));
+		lk_1 = exp(-0.5*vpv_1)*sqrt(2*PI*abs(dets_1));
 		
 		w_sum_prd_u = u_pred[0]*lk_0 + u_pred[1]*lk_1;
 		if (abs(w_sum_prd_u) < 1e-10) {
