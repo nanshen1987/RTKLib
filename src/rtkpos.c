@@ -1,4 +1,4 @@
-/*------------------------------------------------------------------------------
+﻿/*------------------------------------------------------------------------------
 * rtkpos.c : precise positioning
 *
 *          Copyright (C) 2007-2018 by T.TAKASU, All rights reserved.
@@ -1851,6 +1851,8 @@ extern int rtkpos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
         }
     }
     /* relative potitioning */
+    traceopen("D:\\Softs-Data\\vs-workspace2\\RTKLib\\rtklib.log");
+	tracelevel(0);
     relpos(rtk,obs,nu,nr,nav);
     outsolstat(rtk);
     
