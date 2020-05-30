@@ -604,7 +604,7 @@ static void udpos(rtk_t *rtk, double tt)
 				}
 				else {
 					matcpy(x_mr,prev_x_1,sNum,1);
-					matadd(x_mr,interX_0,sNum,1,-1);
+					matadd(x_mr,interX_1,sNum,1,-1);
 					matmul("NT", sNum,sNum,1,1,x_mr,x_mr,0,Q_mr);
 					matadd(Q_mr,prev_Q_1, sNum,sNum,1);
 					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
@@ -613,17 +613,17 @@ static void udpos(rtk_t *rtk, double tt)
 			else {
 				if (k == 0) {
 					matcpy(x_mr,prev_x_0,sNum,1);
-					matadd(x_mr,interX_1,sNum,1,-1);
+					matadd(x_mr,interX_0,sNum,1,-1);
 					matmul("NT", sNum,sNum,1,1,x_mr,x_mr,0,Q_mr);
 					matadd(Q_mr,prev_Q_0, sNum,sNum,1);
-					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+					matadd(interQ_1,Q_mr, sNum,sNum,u_k_j);
 				}
 				else {
 					matcpy(x_mr,prev_x_1,sNum,1);
 					matadd(x_mr,interX_1,sNum,1,-1);
 					matmul("NT", sNum,sNum,1,1,x_mr,x_mr,0,Q_mr);
 					matadd(Q_mr,prev_Q_1, sNum,sNum,1);
-					matadd(interQ_0,Q_mr, sNum,sNum,u_k_j);
+					matadd(interQ_1,Q_mr, sNum,sNum,u_k_j);
 				}
 			}
 		}
@@ -635,8 +635,8 @@ static void udpos(rtk_t *rtk, double tt)
 	//matcpy(rtk->x,xp,rtk->nx,1);
 	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F_0,interQ_0,0.0,FP_0);
 	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_0,F_0,0.0,pred_Q_0);
-	trace(0,"interQ_0="); tracemat(0,interQ_0,rtk->nx,rtk->nx,10,5);
-    trace(0,"pred_Q_0_g="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
+	// trace(0,"interQ_0="); tracemat(0,interQ_0,rtk->nx,rtk->nx,10,5);
+    // trace(0,"pred_Q_0_g="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
     //mode 1
     if(initflag){
         matcpy(pred_x_1,pred_x_0,rtk->nx,1);
@@ -1301,8 +1301,8 @@ static int ddres(rtk_t *rtk, const nav_t *nav, double dt, const double *x,
             }
             /* double-differenced phase-bias term */
             if (f<nf) {
-                if (opt->ionoopt!=IONOOPT_IFLC) {
-                    v[nv]-=lami*x[IB(sat[i],f,opt)]-lamj*x[IB(sat[j],f,opt)];
+				if (opt->ionoopt!=IONOOPT_IFLC) {
+					v[nv]-=lami*x[IB(sat[i],f,opt)]-lamj*x[IB(sat[j],f,opt)];
                     if (H) {
                         Hi[IB(sat[i],f,opt)]= lami;
                         Hi[IB(sat[j],f,opt)]=-lamj;
@@ -1688,13 +1688,14 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     double *rs,*dts,*var,*y_0,*e_0,*azel_0,*y_1,*e_1,*azel_1,*v_0,*H_0,*s_0,*R_0,*v_1,*H_1,*R_1,*s_1,*xp,*Pp,*xa,*bias,dt;
     double *y,*e,*azel;
 	double *xp_r_0,*xp_r_1;
+    double lk_0_1;
     double dets_0,dets_1,vpv_0,vpv_1,lk_0,lk_1,w_sum_prd_u;
     int i,j,f,n=nu+nr,ns,ny,nv,sat[MAXSAT],iu[MAXSAT],ir[MAXSAT],niter;
     int info,vflg[MAXOBS*NFREQ*2+1],svh[MAXOBS*2];
     int stat=rtk->opt.mode<=PMODE_DGPS?SOLQ_DGPS:SOLQ_FLOAT;
 	int nf=opt->ionoopt==IONOOPT_IFLC?1:opt->nf;
-	rtk->nx=9;
-    
+//	rtk->nx=9;
+
     trace(3,"relpos  : nx=%d nu=%d nr=%d\n",rtk->nx,nu,nr);
     
     dt=timediff(time,obs[nu].time);
@@ -1704,7 +1705,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 	y_0=mat(nf*2,n); e_0=mat(3,n); azel_0=zeros(2,n);
 	y_1=mat(nf*2,n); e_1=mat(3,n); azel_1=zeros(2,n);
     
-    for (i=0;i<MAXSAT;i++) {
+	for (i=0;i<MAXSAT;i++) {
         rtk->ssat[i].sys=satsys(i+1,NULL);
         for (j=0;j<NFREQ;j++) rtk->ssat[i].vsat[j]=rtk->ssat[i].snr[j]=0;
     }
@@ -1744,7 +1745,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     s_0=mat(ny,ny); s_1=mat(ny,ny);
     xp_r_0=mat(ny,1); xp_r_1=mat(ny,1);
 
-    
+
     /* add 2 iterations for baseline-constraint moving-base */
     niter=opt->niter+(opt->mode==PMODE_MOVEB&&opt->baseline[0]>0.0?2:0);
     
@@ -1766,19 +1767,26 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
         matcpy(prev_x_0,pred_x_0,rtk->nx,1); matcpy(prev_Q_0,pred_Q_0,rtk->nx,1);
+        trace(0,"prev_x_0="); tracemat(0,pred_x_0,1,rtk->nx,10,5);
+        trace(0,"prev_Q_0="); tracemat(0,prev_Q_0,9,9,10,5);
+        trace(0,"H_0="); tracemat(0,H_0,ny,rtk->nx,10,5);
+        trace(0,"v_0="); tracemat(0,v_0,1,ny,10,5);
+        trace(0,"R_0="); tracemat(0,R_0,ny,ny,10,5);
+
+
 		if ((info=filter(prev_x_0,prev_Q_0,H_0,v_0,R_0,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
 			break;
 		}
 		//innovation vector variation
-		trace(0,"H_0="); tracemat(0,H_0,ny,rtk->nx,10,5);
-		trace(0,"pred_Q_0="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
+		// trace(0,"H_0="); tracemat(0,H_0,ny,rtk->nx,10,5);
+		// trace(0,"pred_Q_0="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
 		mataba_t(H_0,pred_Q_0,ny,rtk->nx,s_0);
-		trace(0,"s_0="); tracemat(0,s_0,ny,ny,10,5);
-		trace(0,"R_0="); tracemat(0,R_0,ny,ny,10,5);
+		// trace(0,"s_0="); tracemat(0,s_0,ny,ny,10,5);
+		// trace(0,"R_0="); tracemat(0,R_0,ny,ny,10,5);
 		matadd(s_0,R_0,ny,ny,1);
-		trace(0,"s_0(a)="); tracemat(0,s_0,ny,ny,10,5);
+		// trace(0,"s_0(a)="); tracemat(0,s_0,ny,ny,10,5);
 
 
 
@@ -1791,7 +1799,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 			break;
 		}
 		/* double-differenced residuals and partial derivatives */
-		if ((nv=ddres(rtk,nav,dt,pred_x_1,pred_Q_0,sat,y_1,e_1,azel_1,iu,ir,ns,v_1,H_1,R_1,vflg))<1) {
+		if ((nv=ddres(rtk,nav,dt,pred_x_1,pred_Q_1,sat,y_1,e_1,azel_1,iu,ir,ns,v_1,H_1,R_1,vflg))<1) {
 			errmsg(rtk,"no double-differenced residual\n");
 			stat=SOLQ_NONE;
 			break;
@@ -1799,27 +1807,35 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		/* kalman filter measurement update */
 		//matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
         matcpy(prev_x_1,pred_x_1,rtk->nx,1); matcpy(prev_Q_1,pred_Q_1,rtk->nx,1);
-		if ((info=filter(pred_x_1,pred_Q_1,H_1,v_1,R_1,rtk->nx,nv))) {
+        trace(0,"prev_x_1="); tracemat(0,pred_x_1,1,rtk->nx,10,5);
+        trace(0,"prev_Q_1="); tracemat(0,prev_Q_1,9,9,10,5);
+        trace(0,"H_1="); tracemat(0,H_1,ny,rtk->nx,10,5);
+        trace(0,"v_1="); tracemat(0,v_1,1,ny,10,5);
+        trace(0,"R_1="); tracemat(0,R_1,ny,ny,10,5);
+		if ((info=filter(prev_x_1,prev_Q_1,H_1,v_1,R_1,rtk->nx,nv))) {
 			errmsg(rtk,"filter error (info=%d)\n",info);
 			stat=SOLQ_NONE;
 			break;
 		}
         //innovation vector variation
         mataba_t(H_1,pred_Q_1,ny,rtk->nx,s_1);
-        matadd(s_1,R_1,ny,ny,1);
+		matadd(s_1,R_1,ny,ny,1);
+        trace(0,"y_0="); tracemat(0,y_0,1,ny,10,5);
+		trace(0,"y_1="); tracemat(0,y_1,1,ny,10,5);
 
 
         trace(4,"x(%d)=",i+1); tracemat(4,xp,1,NR(opt),13,4);
         /**********model probability estimation**************/
         dets_0= matdet(s_0,ny);
-        trace(0,"s0="); tracemat(0,s_0,ny,ny,10,5);
+		// trace(0,"s0="); tracemat(0,s_0,ny,ny,10,5);
         dets_1= matdet(s_1,ny);
         matinv(s_0,ny);
-        trace(0,"s0(inv)="); tracemat(0,s_0,ny,ny,10,5);
+        // trace(0,"s0(inv)="); tracemat(0,s_0,ny,ny,10,5);
 		matinv(s_1,ny);
 		vpv_0=matvpv(v_0,s_0,ny);
-         trace(0,"v0="); tracemat(0,v_0,ny,1,10,5);
+        //  trace(0,"v0="); tracemat(0,v_0,ny,1,10,5);
 		vpv_1=matvpv(v_1,s_1,ny);
+        /**
 		lk_0 = exp(-0.5*vpv_0)*sqrt(2*PI*abs(dets_0));
 		lk_1 = exp(-0.5*vpv_1)*sqrt(2*PI*abs(dets_1));
 		
@@ -1838,7 +1854,26 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 				lk_0 = lk_0_1;
 				lk_1 = 1;
 			}
-		}
+		}**/
+
+		while(dets_0<1e-5){
+            dets_0=dets_0*10;
+            dets_1=dets_1*10;
+        }
+        lk_0_1 = exp((-0.5*vpv_0)+0+(0.5*vpv_1))*sqrt(abs(dets_1/dets_0));
+        if (lk_0_1 > 1e10) {
+            lk_0 = 1e10;
+            lk_1 = 0;
+        }
+        else if (lk_0_1 < 1e-10) {
+            lk_0 = 0;
+            lk_1 = 1e10;
+        }
+        else {
+            lk_0 = lk_0_1;
+            lk_1 = 1;
+        }
+
 		w_sum_prd_u = u_pred[0]*lk_0 + u_pred[1]*lk_1;
 		u[0] = u_pred[0]*lk_0 / w_sum_prd_u;
 		u[1] = u_pred[1]*lk_1 / w_sum_prd_u;
@@ -1944,8 +1979,13 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         if (rtk->ssat[i].fix[j]==2&&stat!=SOLQ_FIX) rtk->ssat[i].fix[j]=1;
         if (rtk->ssat[i].slip[j]&1) rtk->ssat[i].slipc[j]++;
     }
-    free(rs); free(dts); free(var); free(y); free(e); free(azel);
-	free(xp); free(Pp);  free(xa);  free(v_0); free(H_0); free(R_0); free(bias);
+    free(rs); free(dts); free(var); 
+    free(y); free(e); free(azel);
+	free(xp); free(Pp);  free(xa);  free(bias);
+    free(y_0); free(e_0); free(azel_0);free(v_0); free(H_0); free(R_0); 
+    free(y_1); free(e_1); free(azel_1);free(v_1); free(H_1); free(R_1); 
+    free(pred_x_0);free(pred_x_1);free(pred_Q_0);free(pred_Q_1);
+
 
 	if (stat!=SOLQ_NONE) rtk->sol.stat=stat;
 
