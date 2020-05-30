@@ -442,6 +442,7 @@ static void udpos(rtk_t *rtk, double tt)
 	double *F_0,*FP_0,pos[3],Q[9]={0},Qv[9],var=0.0;
 	int i,j,k;
 	double *F_1,*FP_1;
+    int initflag;
     
 	//imm
 	int sNum = rtk->nx;
@@ -471,6 +472,7 @@ static void udpos(rtk_t *rtk, double tt)
     pred_Q_0= zeros(sNum,sNum);
 	pred_Q_1= zeros(sNum,sNum);
     xyz2enu(m_llh,g2l3dmat);
+    initflag=0;
 
     
     trace(3,"udpos   : tt=%.3f\n",tt);
@@ -495,6 +497,7 @@ static void udpos(rtk_t *rtk, double tt)
 		matcpy(prev_x_0,rtk->x,rtk->nx,1);
 		matcpy(prev_Q_0,rtk->P,rtk->nx,rtk->nx);
 		matcpy(prev_Q_1,rtk->P,rtk->nx,rtk->nx);
+        initflag=1;
     }
     /* static mode */
     if (rtk->opt.mode==PMODE_STATIC) return;
@@ -635,19 +638,25 @@ static void udpos(rtk_t *rtk, double tt)
 	trace(0,"interQ_0="); tracemat(0,interQ_0,rtk->nx,rtk->nx,10,5);
     trace(0,"pred_Q_0_g="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
     //mode 1
-    matcpy(pred_x_1,interX_1,rtk->nx,1);
-    pred_x_1[0]=pred_x_1[0]-m_xyz[0];    
-    pred_x_1[1]=pred_x_1[1]-m_xyz[1];    
-    pred_x_1[2]=pred_x_1[2]-m_xyz[2];
-    mata_tba(g2lmat,F_1,rtk->nx,rtk->nx,RT_F_1_R);
-	matmul("NN",rtk->nx,1,rtk->nx,1.0,RT_F_1_R,pred_x_1,0.0,temp_x);
-    temp_x[0]=temp_x[0]+m_xyz[0];
-    temp_x[1]=temp_x[1]+m_xyz[1];
-    temp_x[2]=temp_x[2]+m_xyz[2];
-    matcpy(pred_x_1,temp_x,rtk->nx,1);
-	//matcpy(rtk->x,xp,rtk->nx,1);
-	matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,RT_F_1_R,interQ_1,0.0,FP_1);
-	matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_1,RT_F_1_R,0.0,pred_Q_1);
+    if(initflag){
+        matcpy(pred_x_1,pred_x_0,rtk->nx,1);
+        matcpy(pred_Q_1,pred_Q_0,rtk->nx,rtk->nx);
+    }else{
+        matcpy(pred_x_1,interX_1,rtk->nx,1);
+        pred_x_1[0]=pred_x_1[0]-m_xyz[0];    
+        pred_x_1[1]=pred_x_1[1]-m_xyz[1];    
+        pred_x_1[2]=pred_x_1[2]-m_xyz[2];
+        mata_tba(g2lmat,F_1,rtk->nx,rtk->nx,RT_F_1_R);
+        matmul("NN",rtk->nx,1,rtk->nx,1.0,RT_F_1_R,pred_x_1,0.0,temp_x);
+        temp_x[0]=temp_x[0]+m_xyz[0];
+        temp_x[1]=temp_x[1]+m_xyz[1];
+        temp_x[2]=temp_x[2]+m_xyz[2];
+        matcpy(pred_x_1,temp_x,rtk->nx,1);
+        //matcpy(rtk->x,xp,rtk->nx,1);
+        matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,RT_F_1_R,interQ_1,0.0,FP_1);
+        matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP_1,RT_F_1_R,0.0,pred_Q_1);
+    }
+
 
 
 
