@@ -983,7 +983,7 @@ extern void mata_tba(const double *A,const double *B,int n,int m,double *C)
 {
     double *ATB=mat(m,n);
     matmul("TN",m,n,n,1,A,B,0,ATB);
-    matmul("NT",m,m,n,1,ATB,A,0,C);
+    matmul("NN",m,m,n,1,ATB,A,0,C);
     free(ATB);
 }
 

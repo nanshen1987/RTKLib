@@ -1781,7 +1781,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 		//innovation vector variation
 		// trace(0,"H_0="); tracemat(0,H_0,ny,rtk->nx,10,5);
 		// trace(0,"pred_Q_0="); tracemat(0,pred_Q_0,rtk->nx,rtk->nx,10,5);
-		mataba_t(H_0,pred_Q_0,ny,rtk->nx,s_0);
+		mata_tba(H_0,pred_Q_0,rtk->nx,ny,s_0);
 		// trace(0,"s_0="); tracemat(0,s_0,ny,ny,10,5);
 		// trace(0,"R_0="); tracemat(0,R_0,ny,ny,10,5);
 		matadd(s_0,R_0,ny,ny,1);
@@ -1817,7 +1817,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 			break;
 		}
         //innovation vector variation
-        mataba_t(H_1,pred_Q_1,ny,rtk->nx,s_1);
+        mata_tba(H_1,pred_Q_1,rtk->nx,ny,s_1);
 		matadd(s_1,R_1,ny,ny,1);
         trace(0,"y_0="); tracemat(0,y_0,1,ny,10,5);
 		trace(0,"y_1="); tracemat(0,y_1,1,ny,10,5);
