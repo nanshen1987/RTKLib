@@ -1540,12 +1540,12 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     xp=mat(rtk->nx,1); Pp=zeros(rtk->nx,rtk->nx); xa=mat(rtk->nx,1);
     matcpy(xp,rtk->x,rtk->nx,1);
     
-    ny=ns*nf*2+2;
-    v=mat(ny,1); H=zeros(rtk->nx,ny); R=mat(ny,ny); bias=mat(rtk->nx,1);
+	ny=ns*nf*2+2;
+	v=mat(ny,1); H=zeros(rtk->nx,ny); R=mat(ny,ny); bias=mat(rtk->nx,1);
     
     /* add 2 iterations for baseline-constraint moving-base */
     niter=opt->niter+(opt->mode==PMODE_MOVEB&&opt->baseline[0]>0.0?2:0);
-    
+
     for (i=0;i<niter;i++) {
         /* undifferenced residuals for rover */
         if (!zdres(0,obs,nu,rs,dts,svh,nav,xp,opt,0,y,e,azel)) {
@@ -1559,10 +1559,12 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             stat=SOLQ_NONE;
             break;
         }
-        /* kalman filter measurement update */
-        matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
-        if ((info=filter(xp,Pp,H,v,R,rtk->nx,nv))) {
-            errmsg(rtk,"filter error (info=%d)\n",info);
+		/* kalman filter measurement update */
+		trace(0,"ny=%d",ny);
+		trace(0,"nx=%d",rtk->nx);
+		matcpy(Pp,rtk->P,rtk->nx,rtk->nx);
+		if ((info=filter(xp,Pp,H,v,R,rtk->nx,nv))) {
+			errmsg(rtk,"filter error (info=%d)\n",info);
             stat=SOLQ_NONE;
             break;
         }
@@ -1858,3 +1860,4 @@ extern int rtkpos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     
     return 1;
 }
+
