@@ -103,7 +103,8 @@ static int statlevel=0;          /* rtk status output level (0:off) */
 static FILE *fp_stat=NULL;       /* rtk status file pointer */
 static char file_stat[1024]="";  /* rtk status file original path */
 static gtime_t time_stat={0};    /* rtk status file time */
-
+double m_llh[2]={30.528885582*D2R, 114.356779168*D2R};//lat,lng,height
+double m_xyz[3]={-2267776.7888,  5009327.1136,  3221034.0581};//xyz
 /* open solution status file ---------------------------------------------------
 * open solution status file and set output level
 * args   : char     *file   I   rtk status file
@@ -430,6 +431,14 @@ static void udpos(rtk_t *rtk, double tt)
 {
     double *F,*FP,*xp,pos[3],Q[9]={0},Qv[9],var=0.0;
     int i,j;
+    int initflag=0;
+    double *Fdp=zeros(3,3);
+    double *g2l3dmat=zeros(3,3);
+    double *g2lmat=eye(rtk->nx);
+    double *RT_F_1_R=zeros(rtk->nx,rtk->nx);
+    double *temp_x=mat(rtk->nx,1);
+    xyz2enu(m_llh,g2l3dmat);
+
     
     trace(3,"udpos   : tt=%.3f\n",tt);
     
@@ -444,6 +453,7 @@ static void udpos(rtk_t *rtk, double tt)
         if (rtk->opt.dynamics) {
             for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
             for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+            initflag=1;
         }
     }
     /* static mode */
@@ -467,15 +477,54 @@ static void udpos(rtk_t *rtk, double tt)
     }
     /* state transition of position/velocity/acceleration */
     F=eye(rtk->nx); FP=mat(rtk->nx,rtk->nx); xp=mat(rtk->nx,1);
-    
+    /**
     for (i=0;i<6;i++) {
         F[i+(i+3)*rtk->nx]=tt;
+    }**/
+    if(initflag!=1){
+        Fdp[0]=0.2297;   Fdp[3]=0.0228;  Fdp[6]=0;
+        Fdp[1]=-21.5701; Fdp[4]= -0.1206;Fdp[7]=0;
+        Fdp[2]=553.2954; Fdp[5]=-12.584; Fdp[8]=0.4632;
+                
+        for (i=0;i<3;i++) {
+            for(j=0;j<3;j++){
+            g2lmat[i+j*rtk->nx]= g2lmat[i+3+(j+3)*rtk->nx]= g2lmat[i+6+(j+6)*rtk->nx]=g2l3dmat[i+j*3];
+            }
+	    }
+        F[0+0*rtk->nx]=F[1+1*rtk->nx]=F[2+2*rtk->nx]=Fdp[0];
+        F[0+3*rtk->nx]=F[1+4*rtk->nx]=F[2+5*rtk->nx]=Fdp[3];
+        F[0+6*rtk->nx]=F[1+7*rtk->nx]=F[2+8*rtk->nx]=Fdp[6];
+        F[3+0*rtk->nx]=F[4+1*rtk->nx]=F[5+2*rtk->nx]=Fdp[1];
+        F[3+3*rtk->nx]=F[4+4*rtk->nx]=F[5+5*rtk->nx]=Fdp[4];
+        F[3+6*rtk->nx]=F[4+7*rtk->nx]=F[5+8*rtk->nx]=Fdp[7];
+        F[6+0*rtk->nx]=F[7+1*rtk->nx]=F[8+2*rtk->nx]=Fdp[2];
+        F[6+3*rtk->nx]=F[7+4*rtk->nx]=F[8+5*rtk->nx]=Fdp[5];
+        F[6+6*rtk->nx]=F[7+7*rtk->nx]=F[8+8*rtk->nx]=Fdp[8];
+
     }
+
     /* x=F*x, P=F*P*F+Q */
-    matmul("NN",rtk->nx,1,rtk->nx,1.0,F,rtk->x,0.0,xp);
-    matcpy(rtk->x,xp,rtk->nx,1);
-    matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F,rtk->P,0.0,FP);
-    matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP,F,0.0,rtk->P);
+    if(initflag){
+        matmul("NN",rtk->nx,1,rtk->nx,1.0,F,rtk->x,0.0,xp);
+        matcpy(rtk->x,xp,rtk->nx,1);
+        matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,F,rtk->P,0.0,FP);
+        matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP,F,0.0,rtk->P);
+    }else{
+        matcpy(xp,rtk->x,rtk->nx,1);
+        xp[0]=xp[0]-m_xyz[0];    
+        xp[1]=xp[1]-m_xyz[1];    
+        xp[2]=xp[2]-m_xyz[2];
+        mata_tba(g2lmat,F,rtk->nx,rtk->nx,RT_F_1_R);
+        matmul("NN",rtk->nx,1,rtk->nx,1.0,RT_F_1_R,xp,0.0,temp_x);
+        temp_x[0]=temp_x[0]+m_xyz[0];
+        temp_x[1]=temp_x[1]+m_xyz[1];
+        temp_x[2]=temp_x[2]+m_xyz[2];
+        matcpy(xp,temp_x,rtk->nx,1);
+        matcpy(rtk->x,xp,rtk->nx,1);
+        matmul("NN",rtk->nx,rtk->nx,rtk->nx,1.0,RT_F_1_R,rtk->P,0.0,FP);
+        matmul("NT",rtk->nx,rtk->nx,rtk->nx,1.0,FP,RT_F_1_R,0.0,rtk->P);
+    }
+
     
     /* process noise added to only acceleration */
     Q[0]=Q[4]=SQR(rtk->opt.prn[3]); Q[8]=SQR(rtk->opt.prn[4]);
@@ -485,6 +534,7 @@ static void udpos(rtk_t *rtk, double tt)
         rtk->P[i+6+(j+6)*rtk->nx]+=Qv[i+j*3];
     }
     free(F); free(FP); free(xp);
+    free(RT_F_1_R);free(temp_x);free(g2lmat);free(Fdp);free(g2l3dmat);
 }
 /* temporal update of ionospheric parameters ---------------------------------*/
 static void udion(rtk_t *rtk, double tt, double bl, const int *sat, int ns)
